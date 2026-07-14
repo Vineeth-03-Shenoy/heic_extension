@@ -4,7 +4,7 @@ Set-Location $PSScriptRoot
 
 $py = Join-Path $PSScriptRoot '.venv\Scripts\python.exe'
 if (-not (Test-Path $py)) {
-    Write-Error "Missing .venv — run: python -m venv .venv; .venv\Scripts\pip install -r requirements.txt"
+    Write-Error "Missing .venv - run: python -m venv .venv; .venv\Scripts\pip install -r requirements.txt"
 }
 
 & $py make_icon.py
