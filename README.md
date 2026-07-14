@@ -15,6 +15,7 @@ Linux use.
 
 - **Double-click any `.heic` / `.heif` / `.hif` / `.avif`** file to view it
 - Also opens JPG / PNG / WebP / GIF / BMP / TIFF — browse a whole folder with the arrow keys
+- Toolbar buttons for every action, with native Windows icons — hover any button to learn its keyboard shortcut, or press `F1` for the full list
 - **Right-click → Convert to JPEG** straight from Explorer (EXIF — date, GPS, camera — preserved)
 - Zoom to cursor, pan, rotate, fullscreen, save as JPEG/PNG
 - Batch conversion CLI
@@ -60,8 +61,12 @@ Done — HEIC photos now open on double-click, forever.
 | `R` / `Shift+R` | rotate right / left |
 | `Ctrl+S` | save as JPEG/PNG |
 | `Ctrl+O` | open file |
-| `F11` | fullscreen |
+| `F11` | fullscreen (hides all chrome) |
+| `F1` | shortcuts help |
 | `Esc` | leave fullscreen / quit |
+
+Every shortcut also has a toolbar button — the buttons are additions, the keys
+all still work.
 
 ## Batch conversion
 

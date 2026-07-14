@@ -13,7 +13,10 @@ Shortcuts:
     Ctrl+S                          save as JPEG/PNG
     Ctrl+O                          open file
     F11                             fullscreen
+    F1                              show shortcuts
     Esc                             leave fullscreen / quit
+
+Every shortcut also has a toolbar button; hover a button to see its key.
 """
 
 from __future__ import annotations
@@ -46,6 +49,59 @@ MAX_ZOOM = 16.0
 BG = "#1e1e1e"
 BAR_BG = "#2b2b2b"
 BAR_FG = "#cccccc"
+BTN_FG = "#d8d8d8"
+BTN_DISABLED = "#5c5c5c"
+BTN_HOVER_BG = "#3a3a3a"
+BTN_PRESS_BG = "#464646"
+SEP_BG = "#3f3f3f"
+TIP_BG = "#3f3f3f"
+TIP_FG = "#eeeeee"
+
+# Segoe MDL2 Assets ships with Windows 10/11 and provides native-looking icons
+ICON_FONT = ("Segoe MDL2 Assets", 11)
+SYMBOL_FONT = ("Segoe UI Symbol", 12)
+TEXT_FONT = ("Segoe UI", 9, "bold")
+
+
+class Tooltip:
+    """Delayed hover tooltip that also teaches the keyboard shortcut."""
+
+    def __init__(self, widget: tk.Widget, text: str):
+        self.widget = widget
+        self.text = text
+        self.tip: tk.Toplevel | None = None
+        self._after: str | None = None
+        widget.bind("<Enter>", self._schedule, add="+")
+        widget.bind("<Leave>", self._hide, add="+")
+        widget.bind("<ButtonPress>", self._hide, add="+")
+
+    def _schedule(self, _event=None):
+        self._cancel()
+        self._after = self.widget.after(500, self._show)
+
+    def _cancel(self):
+        if self._after is not None:
+            self.widget.after_cancel(self._after)
+            self._after = None
+
+    def _show(self):
+        if self.tip is not None:
+            return
+        self.tip = tk.Toplevel(self.widget)
+        self.tip.wm_overrideredirect(True)
+        self.tip.attributes("-topmost", True)
+        tk.Label(self.tip, text=self.text, bg=TIP_BG, fg=TIP_FG,
+                 font=("Segoe UI", 9), padx=8, pady=4).pack()
+        self.tip.update_idletasks()
+        x = self.widget.winfo_rootx() + (self.widget.winfo_width() - self.tip.winfo_width()) // 2
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 6
+        self.tip.geometry(f"+{max(x, 0)}+{y}")
+
+    def _hide(self, _event=None):
+        self._cancel()
+        if self.tip is not None:
+            self.tip.destroy()
+            self.tip = None
 
 
 class ViewerApp:
@@ -71,10 +127,15 @@ class ViewerApp:
         except tk.TclError:
             pass
 
-        self.canvas = tk.Canvas(root, bg=BG, highlightthickness=0, cursor="fleur")
-        self.canvas.pack(fill="both", expand=True)
+        self.toolbar = tk.Frame(root, bg=BAR_BG)
+        self.toolbar.pack(fill="x", side="top")
         self.status = tk.Label(root, text="", anchor="w", bg=BAR_BG, fg=BAR_FG, padx=8)
         self.status.pack(fill="x", side="bottom")
+        self.canvas = tk.Canvas(root, bg=BG, highlightthickness=0, cursor="fleur")
+        self.canvas.pack(fill="both", expand=True)
+
+        self._buttons: list[tuple[tk.Label, str]] = []  # (button, "always"|"image"|"nav")
+        self._build_toolbar()
 
         self.canvas.bind("<Configure>", lambda e: self.redraw())
         self.canvas.bind("<ButtonPress-1>", self.on_drag_start)
@@ -97,12 +158,117 @@ class ViewerApp:
         root.bind("<Control-s>", lambda e: self.save_as())
         root.bind("<Control-o>", lambda e: self.open_dialog())
         root.bind("<F11>", lambda e: self.toggle_fullscreen())
+        root.bind("<F1>", lambda e: self.show_help())
         root.bind("<Escape>", lambda e: self.on_escape())
 
         if path is None:
             self.open_dialog()
         else:
             self.load_path(path)
+
+    # ---------- toolbar ----------
+
+    def _build_toolbar(self):
+        def sep():
+            tk.Frame(self.toolbar, width=1, bg=SEP_BG).pack(side="left", fill="y", pady=6, padx=4)
+
+        self._tool_button("", ICON_FONT, "Open file  (Ctrl+O)", self.open_dialog, "always")
+        sep()
+        self._tool_button("", ICON_FONT, "Previous image  (←)", lambda: self.step(-1), "nav")
+        self._tool_button("", ICON_FONT, "Next image  (→)", lambda: self.step(1), "nav")
+        sep()
+        self._tool_button("", ICON_FONT, "Zoom out  (−)", lambda: self.zoom_by(0.8), "image")
+        self.zoom_label = tk.Label(self.toolbar, text="—", width=5, bg=BAR_BG,
+                                   fg=BAR_FG, font=("Segoe UI", 9), cursor="hand2")
+        self.zoom_label.pack(side="left")
+        self.zoom_label.bind("<Button-1>", lambda e: self.set_fit())
+        Tooltip(self.zoom_label, "Zoom level — click to fit")
+        self._tool_button("", ICON_FONT, "Zoom in  (+)", lambda: self.zoom_by(1.25), "image")
+        self._tool_button("", ICON_FONT, "Fit to window  (F or 0)", self.set_fit, "image")
+        self._tool_button("1:1", TEXT_FONT, "Actual size  (1)", lambda: self.set_zoom(1.0), "image")
+        sep()
+        self._tool_button("⟲", SYMBOL_FONT, "Rotate left  (Shift+R)", lambda: self.rotate(-90), "image")
+        self._tool_button("⟳", SYMBOL_FONT, "Rotate right  (R)", lambda: self.rotate(90), "image")
+        sep()
+        self._tool_button("", ICON_FONT, "Save as JPEG/PNG  (Ctrl+S)", self.save_as, "image")
+        sep()
+        self._tool_button("", ICON_FONT, "Fullscreen  (F11)", self.toggle_fullscreen, "always")
+        self._tool_button("", ICON_FONT, "Keyboard shortcuts  (F1)", self.show_help,
+                          "always", side="right")
+        self.update_toolbar_state()
+
+    def _tool_button(self, glyph, font, tip, command, kind, side="left") -> tk.Label:
+        btn = tk.Label(self.toolbar, text=glyph, font=font, bg=BAR_BG, fg=BTN_FG,
+                       padx=11, pady=6, cursor="hand2")
+        btn.pack(side=side)
+        btn.enabled = True
+
+        def on_enter(_e):
+            if btn.enabled:
+                btn.config(bg=BTN_HOVER_BG)
+
+        def on_leave(_e):
+            btn.config(bg=BAR_BG)
+
+        def on_press(_e):
+            if btn.enabled:
+                btn.config(bg=BTN_PRESS_BG)
+
+        def on_release(event):
+            inside = 0 <= event.x < btn.winfo_width() and 0 <= event.y < btn.winfo_height()
+            btn.config(bg=BTN_HOVER_BG if (inside and btn.enabled) else BAR_BG)
+            if inside and btn.enabled:
+                command()
+
+        btn.bind("<Enter>", on_enter, add="+")
+        btn.bind("<Leave>", on_leave, add="+")
+        btn.bind("<ButtonPress-1>", on_press, add="+")
+        btn.bind("<ButtonRelease-1>", on_release, add="+")
+        Tooltip(btn, tip)
+        self._buttons.append((btn, kind))
+        return btn
+
+    def update_toolbar_state(self):
+        has_image = self.base is not None
+        has_neighbors = len(self.files) > 1
+        for btn, kind in self._buttons:
+            enabled = kind == "always" or (kind == "image" and has_image) \
+                or (kind == "nav" and has_neighbors)
+            btn.enabled = enabled
+            btn.config(fg=BTN_FG if enabled else BTN_DISABLED,
+                       cursor="hand2" if enabled else "arrow")
+
+    def show_help(self):
+        if getattr(self, "_help", None) is not None and self._help.winfo_exists():
+            self._help.lift()
+            return
+        win = tk.Toplevel(self.root)
+        self._help = win
+        win.title("Keyboard shortcuts")
+        win.configure(bg=BG, padx=20, pady=14)
+        win.resizable(False, False)
+        win.transient(self.root)
+        rows = [
+            ("← / →   (Backspace / Space)", "previous / next image"),
+            ("Mouse wheel,  + / −", "zoom around cursor"),
+            ("F  or  0", "fit to window"),
+            ("1", "actual size (100%)"),
+            ("Double-click", "toggle fit / 100%"),
+            ("Drag", "pan"),
+            ("R  /  Shift+R", "rotate right / left"),
+            ("Ctrl+S", "save as JPEG/PNG"),
+            ("Ctrl+O", "open file"),
+            ("F11", "fullscreen"),
+            ("F1", "this help"),
+            ("Esc", "leave fullscreen / quit"),
+        ]
+        for r, (keys, action) in enumerate(rows):
+            tk.Label(win, text=keys, bg=BG, fg="#ffffff", font=("Segoe UI", 10, "bold"),
+                     anchor="w").grid(row=r, column=0, sticky="w", padx=(0, 24), pady=2)
+            tk.Label(win, text=action, bg=BG, fg=BAR_FG, font=("Segoe UI", 10),
+                     anchor="w").grid(row=r, column=1, sticky="w", pady=2)
+        win.bind("<Escape>", lambda e: win.destroy())
+        win.bind("<F1>", lambda e: win.destroy())
 
     # ---------- file handling ----------
 
@@ -236,6 +402,12 @@ class ViewerApp:
     def toggle_fullscreen(self):
         self._fullscreen = not self._fullscreen
         self.root.attributes("-fullscreen", self._fullscreen)
+        if self._fullscreen:  # immersive: hide all chrome
+            self.toolbar.pack_forget()
+            self.status.pack_forget()
+        else:
+            self.toolbar.pack(fill="x", side="top", before=self.canvas)
+            self.status.pack(fill="x", side="bottom", before=self.canvas)
 
     def on_escape(self):
         if self._fullscreen:
@@ -284,16 +456,20 @@ class ViewerApp:
         self.update_status()
 
     def update_status(self, error: str | None = None):
+        self.update_toolbar_state()
         if not self.files:
             self.status.config(text="No image")
+            self.zoom_label.config(text="—")
             return
         path = self.files[self.index]
         if error or self.base is None:
             self.status.config(text=f"{path.name}  —  failed to load: {error}")
+            self.zoom_label.config(text="—")
             return
         img = self.current_image()
         z = self.effective_zoom(img)
         fit = " (fit)" if self.zoom is None else ""
+        self.zoom_label.config(text=f"{z * 100:.0f}%")
         self.status.config(
             text=f"{path.name}   {self.index + 1}/{len(self.files)}   "
             f"{img.width}×{img.height}   {z * 100:.0f}%{fit}"
