@@ -28,8 +28,8 @@ Requires Windows 10/11 and [Python 3.11+](https://www.python.org/downloads/)
 (only to build; the built app is standalone).
 
 ```powershell
-git clone https://github.com/Vineeth-03-Shenoy/heic_extension.git
-cd heic_extension
+git clone https://github.com/Vineeth-03-Shenoy/heic_viewer.git
+cd heic_viewer
 python -m venv .venv
 .venv\Scripts\pip install -r requirements.txt
 .\build.ps1     # produces dist\HEICViewer\HEICViewer.exe
